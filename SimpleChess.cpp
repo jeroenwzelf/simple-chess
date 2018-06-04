@@ -47,21 +47,25 @@ pieceColor Game::nextPlayer() const {
 
 void Game::move(Move m) {
 	pieceColor player = currentPlayer();
-	Piece* from = getPiece(m.from_x, m.from_y);
-	Piece* to = getPiece(m.to_x, m.to_y);
-
 	assert(state == gameState::PLAYING);
-	assert(from->color = player);
+	assert(getPiece(m.from_x, m.from_y)->color = player);
 
-	*to = *from;
-	to->moved = true;
-	position.board[m.from_x][m.from_y] = new Piece();
+	movePieceTo(m);
 
 	if (m.castles) {
-		// do castling
+		if (m.from_y < m.to_y) {	// Queenside Castling
+			if (player == pieceColor::WHITE) movePieceTo(Move(7, 7, 7, 4));
+			else movePieceTo(Move(0, 7, 0, 4));
+		}
+		else {						// Kingside Castling
+			if (player == pieceColor::WHITE) movePieceTo(Move(7, 0, 7, 2));
+			else movePieceTo(Move(0, 0, 0, 2));
+		}
 	}
 	else if (m.enpassant) {
-		// do en passant
+		unsigned direction;
+		(player == pieceColor::WHITE) ? direction = 1 : direction = -1;
+		position.board[m.to_x + direction][m.to_y] = new Piece();
 	}
 
 	++turn;
@@ -69,6 +73,15 @@ void Game::move(Move m) {
 	position.inCheck = isInCheck();
 	calculateAllPossibleMoves(player);
 	checkIfEndPosition();
+}
+
+void Game::movePieceTo(Move m) {
+	Piece* from = getPiece(m.from_x, m.from_y);
+	Piece* to = getPiece(m.to_x, m.to_y);
+
+	*to = *from;
+	to->moved = true;
+	position.board[m.from_x][m.from_y] = new Piece();
 }
 
 bool Game::isInCheck() const {
@@ -141,7 +154,7 @@ std::vector<Move> Game::getLegalMoves(const unsigned &x, const unsigned &y) cons
 
 	auto isOpponent = [&] (unsigned dx, unsigned dy) -> bool {
 		Piece* opponent = getPiece(dx, dy);
-		if (opponent == NULL) return true;
+		if (opponent == NULL) return false;
 		return (opponent->name != pieceName::EMPTY
 				&& opponent->color != p->color);
 	};
@@ -156,7 +169,9 @@ std::vector<Move> Game::getLegalMoves(const unsigned &x, const unsigned &y) cons
 				addMove(Move(x, y, x + direction, y));
 
 			/* -- two steps -- */
-			if (!p->moved && getPiece(x + (2 * direction), y)->name == pieceName::EMPTY)
+			if (!p->moved
+					&& getPiece(x + direction, y)->name == pieceName::EMPTY
+					&& getPiece(x + (2 * direction), y)->name == pieceName::EMPTY)
 				addMove(Move(x, y, x + (2 * direction), y));
 
 			/* -- taking -- */
@@ -166,7 +181,13 @@ std::vector<Move> Game::getLegalMoves(const unsigned &x, const unsigned &y) cons
 			}
 
 			/* -- en passant -- */
-
+			bool isEnPassantSquare;
+			(direction > 0) ? isEnPassantSquare = (x == 3) : isEnPassantSquare = (x == 4);
+			if (isEnPassantSquare) {
+				for (auto leftOrRight : { -1, 1 })
+					if (isOpponent(x, y + leftOrRight) && getPiece(x + direction, y + leftOrRight)->name == pieceName::EMPTY)
+						addMove(Move(x, y, x + direction, y + leftOrRight));
+			}
 		} break;
 		case pieceName::QUEEN:
 		case pieceName::ROOK: {
@@ -196,6 +217,22 @@ std::vector<Move> Game::getLegalMoves(const unsigned &x, const unsigned &y) cons
 					addMove(Move(x, y, x+dx, y+dy));
 				}
 			}
+			if (!p->moved) {
+				/* -- queenside castling -- */
+				Piece* rook;
+				(p->color == pieceColor::WHITE) ? rook = getPiece(7, 7) : rook = getPiece(0, 7);
+				if (!rook->moved
+						&& getPiece(x, 4)->name == pieceName::EMPTY
+						&& getPiece(x, 5)->name == pieceName::EMPTY
+						&& getPiece(x, 6)->name == pieceName::EMPTY)
+					addMove(Move(x, y, 5, y, true));
+				/* -- kingside castling -- */
+				(p->color == pieceColor::WHITE) ? rook = getPiece(7, 0) : rook = getPiece(0, 0);
+				if (!rook->moved
+						&& getPiece(x, 2)->name == pieceName::EMPTY
+						&& getPiece(x, 1)->name == pieceName::EMPTY)
+					addMove(Move(x, y, 1, y, true));
+			}
 		} break;
 		default: break;
 	}
@@ -212,8 +249,8 @@ void print(const Game &g) {
 	std::cout << "------------------------------------------------ MOVE " << g.turn << " -------------"<< std::endl;
 	for (unsigned i=0; i < 8; ++i) {
 		for (unsigned j=0; j < 8; ++j) {
-			Piece* p = g.getPiece(i, j);
-			std::cout << p->color << p->name << ' ';
+			g.getPiece(i, j)->print();
+			std::cout << ' ';
 		}
 		std::cout << std::endl;
 	}
@@ -227,15 +264,31 @@ int random(int a, int b) {
 	return dis(gen);
 }
 
+void waitForInput() {
+	std::cout << "Press enter to continue...";
+	std::cin.ignore();
+	for (int i=0; i < 11; ++i) std::cout << "\e[A";
+}
+
 int main() {
 	Game g;
-	char h;
-	do {
+	while (g.state == gameState::PLAYING) {
 		print(g);
-		std::cin >> h;
+		waitForInput();
+
+		/* -- do random move -- */
 		Piece* p;
 		do { p = g.getPiece(random(0, 7), random(0, 7));
 		} while (p == NULL || p->color != g.currentPlayer() || p->legalMoves.empty());
 		g.move(p->legalMoves.front());
-	} while (h != 'q' && h != 27);
+	}
+	/* -- game ended -- */
+	print(g);
+	switch(g.state) {
+		case gameState::DRAW: std::cout << "Game is a draw!" << std::endl; break;
+		case gameState::WON_WHITE: std::cout << "White won!" << std::endl; break;
+		case gameState::WON_BLACK: std::cout << "Black won!" << std::endl; break;
+		default: break;
+	}
+	return 0;
 }
