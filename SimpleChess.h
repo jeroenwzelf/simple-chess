@@ -12,14 +12,16 @@ enum class pieceName { EMPTY, PAWN, ROOK, BISHOP, KNIGHT, KING, QUEEN };
 enum class pieceColor { EMPTY, WHITE, BLACK };
 
 struct Move {
-	Move(unsigned f_x=0, unsigned f_y=0, unsigned t_x=0, unsigned t_y=0, bool c=false, bool p=false)
-		: from_x(f_x), from_y(f_y), to_x(t_x), to_y(t_y), castles(c), enpassant(p) {}
+	Move(unsigned f_x=0, unsigned f_y=0, unsigned t_x=0, unsigned t_y=0, bool c=false, bool e=false, pieceName p = pieceName::EMPTY)
+		: from_x(f_x), from_y(f_y), to_x(t_x), to_y(t_y), castles(c), enpassant(e), promotePiece(p) {}
 	unsigned from_x, from_y, to_x, to_y;
 	bool castles, enpassant;
+	pieceName promotePiece;
 };
 
 struct Piece {
 	Piece(pieceName n = pieceName::EMPTY, pieceColor c = pieceColor::EMPTY) : name(n), color(c), moved(false) {}
+	Piece(const Piece* p) : name(p->name), color(p->color), moved(p->moved) {}
 	void print() {
 		switch(name) {
 			case pieceName::EMPTY:	std::cout << "."; break;
@@ -39,6 +41,8 @@ struct Piece {
 };
 
 struct Board {
+	Board();
+	Board(const Board &b);
 	Piece* board[8][8];
 	bool inCheck;
 };
@@ -46,7 +50,8 @@ struct Board {
 class Game {
 	public:
 		Game();	// initialize chess board and such
-		void move(Move m);
+		Game(const Game &g);
+		void move(const Move &m);
 		Piece* getPiece(const unsigned &x, const unsigned &y) const;
 		
 		pieceColor currentPlayer() const;
@@ -60,5 +65,6 @@ class Game {
 		void movePieceTo(Move m);
 		void checkIfEndPosition();
 		void calculateAllPossibleMoves(const pieceColor &player);
+		bool preventsCheck(const Move &m) const;
 		std::vector<Move> getLegalMoves(const unsigned &x, const unsigned &y) const;
 };

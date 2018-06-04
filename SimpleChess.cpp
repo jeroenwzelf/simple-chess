@@ -1,31 +1,47 @@
 #include "SimpleChess.h"
 
-Game::Game() {
-	state = gameState::PLAYING;
-	turn = 0;
+Board::Board() : inCheck(false) {
 	/* -- Initialize board to chess starting position -- */
 	unsigned piecerows = 0; unsigned pawnrows = 1; pieceColor color = pieceColor::WHITE;
 	for (unsigned c = 0; c < 2; ++c) {
 		for (unsigned i = 0; i < 8; ++i) {
-			position.board[pawnrows][i] = new Piece(pieceName::PAWN, color);
+			board[pawnrows][i] = new Piece(pieceName::PAWN, color);
 			switch (i) {
-					case 7: case 0: position.board[piecerows][i] = new Piece(pieceName::ROOK, color); break;
-					case 5: case 1: position.board[piecerows][i] = new Piece(pieceName::BISHOP, color); break;
-					case 6: case 2: position.board[piecerows][i] = new Piece(pieceName::KNIGHT, color); break;
-					case 4: position.board[piecerows][i] = new Piece(pieceName::QUEEN, color); break;
-					case 3: position.board[piecerows][i] = new Piece(pieceName::KING, color); break;
+					case 7: case 0: board[piecerows][i] = new Piece(pieceName::ROOK, color); break;
+					case 5: case 1: board[piecerows][i] = new Piece(pieceName::BISHOP, color); break;
+					case 6: case 2: board[piecerows][i] = new Piece(pieceName::KNIGHT, color); break;
+					case 4: board[piecerows][i] = new Piece(pieceName::QUEEN, color); break;
+					case 3: board[piecerows][i] = new Piece(pieceName::KING, color); break;
 			}
 		}
 		piecerows = 7; pawnrows = 6; color = pieceColor::BLACK;
 	}
 	for (int i=2; i<6; ++i) {
 		for (int j=0; j<8; ++j) {
-			position.board[i][j] = new Piece();
+			board[i][j] = new Piece();
 		}
 	}
-	position.inCheck = false;
+}
+
+Board::Board(const Board &b) : inCheck(b.inCheck) {
+	for (unsigned i=0; i < 8; ++i) {
+		for (unsigned j=0; j < 8; ++j) {
+			board[i][j] = new Piece(b.board[i][j]);
+		}
+	}
+}
+
+Game::Game() {
+	state = gameState::PLAYING;
+	turn = 0;
 	calculateAllPossibleMoves(pieceColor::WHITE);
 	calculateAllPossibleMoves(pieceColor::BLACK);
+}
+
+Game::Game(const Game &g) {
+	state = g.state;
+	turn = g.turn;
+	position = Board(g.position);
 }
 
 Piece* Game::getPiece(const unsigned &x, const unsigned &y) const {
@@ -45,14 +61,16 @@ pieceColor Game::nextPlayer() const {
 	return c;
 }
 
-void Game::move(Move m) {
+void Game::move(const Move &m) {
 	pieceColor player = currentPlayer();
 	assert(state == gameState::PLAYING);
 	assert(getPiece(m.from_x, m.from_y)->color = player);
 
 	movePieceTo(m);
 
-	if (m.castles) {
+	if (m.promotePiece != pieceName::EMPTY)
+		getPiece(m.to_x, m.to_y)->name = m.promotePiece;
+	else if (m.castles) {
 		if (m.from_y < m.to_y) {	// Queenside Castling
 			if (player == pieceColor::WHITE) movePieceTo(Move(7, 7, 7, 4));
 			else movePieceTo(Move(0, 7, 0, 4));
@@ -69,7 +87,7 @@ void Game::move(Move m) {
 	}
 
 	++turn;
-	calculateAllPossibleMoves(nextPlayer());
+	//calculateAllPossibleMoves(nextPlayer());
 	position.inCheck = isInCheck();
 	calculateAllPossibleMoves(player);
 	checkIfEndPosition();
@@ -132,6 +150,13 @@ void Game::calculateAllPossibleMoves(const pieceColor &player) {
 	}
 }
 
+bool Game::preventsCheck(const Move &m) const {
+	Game f = Game(*this);
+	f.move(m);
+	f.turn--;
+	return ( !f.isInCheck() );
+}
+
 std::vector<Move> Game::getLegalMoves(const unsigned &x, const unsigned &y) const {
 	std::vector<Move> legalMoves;
 	Piece* p = getPiece(x, y);
@@ -146,8 +171,16 @@ std::vector<Move> Game::getLegalMoves(const unsigned &x, const unsigned &y) cons
 				&& m.from_y >= 0 && m.from_y < 8
 				&& m.to_x >= 0 && m.to_x < 8
 				&& m.to_y >= 0 && m.to_y < 8) {
-			legalMoves.push_back(m);
-			return true;
+			if (position.inCheck) {
+				if (preventsCheck(m)) {
+					legalMoves.push_back(m);
+					return true;
+				}
+			}
+			else {
+				legalMoves.push_back(m);
+				return true;
+			}
 		}
 		return false;
 	};
@@ -165,19 +198,34 @@ std::vector<Move> Game::getLegalMoves(const unsigned &x, const unsigned &y) cons
 			(p->color == pieceColor::WHITE) ? direction = 1 : direction = -1;
 
 			/* -- one step -- */
-			if (getPiece(x + direction, y)->name == pieceName::EMPTY)
-				addMove(Move(x, y, x + direction, y));
+			if (getPiece(x + direction, y)->name == pieceName::EMPTY) {
+				if (x + direction == 0 || x + direction == 7) {	// Promoting
+					addMove(Move(x, y, x + direction, y, false, false, pieceName::QUEEN));
+					addMove(Move(x, y, x + direction, y, false, false, pieceName::ROOK));
+					addMove(Move(x, y, x + direction, y, false, false, pieceName::BISHOP));
+					addMove(Move(x, y, x + direction, y, false, false, pieceName::KNIGHT));
+				}
+				else addMove(Move(x, y, x + direction, y));
+			}
 
 			/* -- two steps -- */
 			if (!p->moved
 					&& getPiece(x + direction, y)->name == pieceName::EMPTY
-					&& getPiece(x + (2 * direction), y)->name == pieceName::EMPTY)
+					&& getPiece(x + (2 * direction), y)->name == pieceName::EMPTY) {
 				addMove(Move(x, y, x + (2 * direction), y));
+			}
 
 			/* -- taking -- */
 			for (auto leftOrRight : { -1, 1 }) {
-				if (isOpponent(x + direction, y + leftOrRight))
-					addMove(Move(x, y, x + direction, y + leftOrRight));
+				if (isOpponent(x + direction, y + leftOrRight)) {
+					if (x + direction == 0 || x + direction == 7) {	// Promoting
+						addMove(Move(x, y, x + direction, y + leftOrRight, false, false, pieceName::QUEEN));
+						addMove(Move(x, y, x + direction, y + leftOrRight, false, false, pieceName::ROOK));
+						addMove(Move(x, y, x + direction, y + leftOrRight, false, false, pieceName::BISHOP));
+						addMove(Move(x, y, x + direction, y + leftOrRight, false, false, pieceName::KNIGHT));
+					}
+					else addMove(Move(x, y, x + direction, y + leftOrRight));
+				}
 			}
 
 			/* -- en passant -- */
@@ -185,8 +233,10 @@ std::vector<Move> Game::getLegalMoves(const unsigned &x, const unsigned &y) cons
 			(direction > 0) ? isEnPassantSquare = (x == 3) : isEnPassantSquare = (x == 4);
 			if (isEnPassantSquare) {
 				for (auto leftOrRight : { -1, 1 })
-					if (isOpponent(x, y + leftOrRight) && getPiece(x + direction, y + leftOrRight)->name == pieceName::EMPTY)
-						addMove(Move(x, y, x + direction, y + leftOrRight));
+					if (isOpponent(x, y + leftOrRight)
+							&& getPiece(x, y + leftOrRight)->name == pieceName::PAWN
+							&& getPiece(x + direction, y + leftOrRight)->name == pieceName::EMPTY)
+						addMove(Move(x, y, x + direction, y + leftOrRight, false, true));
 			}
 		} break;
 		case pieceName::QUEEN:
@@ -246,7 +296,7 @@ std::vector<Move> Game::getLegalMoves(const unsigned &x, const unsigned &y) cons
 
 
 void print(const Game &g) {
-	std::cout << "------------------------------------------------ MOVE " << g.turn << " -------------"<< std::endl;
+	std::cout << '\r' << "------------------------------------------------ MOVE " << g.turn << " -------------"<< std::endl;
 	for (unsigned i=0; i < 8; ++i) {
 		for (unsigned j=0; j < 8; ++j) {
 			g.getPiece(i, j)->print();
@@ -265,9 +315,9 @@ int random(int a, int b) {
 }
 
 void waitForInput() {
-	std::cout << "Press enter to continue...";
+	std::cout << "Press enter to continue..." << "\e[A";
 	std::cin.ignore();
-	for (int i=0; i < 11; ++i) std::cout << "\e[A";
+	for (int i=0; i < 10; ++i) std::cout << "\e[A";
 }
 
 int main() {
@@ -280,15 +330,16 @@ int main() {
 		Piece* p;
 		do { p = g.getPiece(random(0, 7), random(0, 7));
 		} while (p == NULL || p->color != g.currentPlayer() || p->legalMoves.empty());
-		g.move(p->legalMoves.front());
+		g.move(p->legalMoves.at( random(0, p->legalMoves.size()-1) ));
 	}
 	/* -- game ended -- */
 	print(g);
 	switch(g.state) {
-		case gameState::DRAW: std::cout << "Game is a draw!" << std::endl; break;
-		case gameState::WON_WHITE: std::cout << "White won!" << std::endl; break;
-		case gameState::WON_BLACK: std::cout << "Black won!" << std::endl; break;
+		case gameState::DRAW: std::cout << "Game is a draw!"; break;
+		case gameState::WON_WHITE: std::cout << "White won!"; break;
+		case gameState::WON_BLACK: std::cout << "Black won!"; break;
 		default: break;
 	}
+	std::cin.ignore();
 	return 0;
 }
