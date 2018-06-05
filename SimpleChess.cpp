@@ -34,6 +34,7 @@ Board::Board(const Board &b) : inCheck(b.inCheck) {
 Game::Game() {
 	state = gameState::PLAYING;
 	turn = 0;
+	fiftyMoveRule = 0;
 	calculateAllPossibleMoves(pieceColor::WHITE);
 	calculateAllPossibleMoves(pieceColor::BLACK);
 }
@@ -41,6 +42,7 @@ Game::Game() {
 Game::Game(const Game &g) {
 	state = g.state;
 	turn = g.turn;
+	fiftyMoveRule = g.fiftyMoveRule;
 	position = Board(g.position);
 }
 
@@ -82,14 +84,13 @@ void Game::move(const Move &m) {
 	}
 	else if (m.enpassant) {
 		unsigned direction;
-		(player == pieceColor::WHITE) ? direction = 1 : direction = -1;
+		(player == pieceColor::WHITE) ? direction = -1 : direction = 1;
 		position.board[m.to_x + direction][m.to_y] = new Piece();
 	}
 
 	++turn;
-	//calculateAllPossibleMoves(nextPlayer());
 	position.inCheck = isInCheck();
-	calculateAllPossibleMoves(player);
+	calculateAllPossibleMoves(currentPlayer());
 	checkIfEndPosition();
 }
 
@@ -97,17 +98,20 @@ void Game::movePieceTo(Move m) {
 	Piece* from = getPiece(m.from_x, m.from_y);
 	Piece* to = getPiece(m.to_x, m.to_y);
 
+	if (from->name != pieceName::PAWN && to->name != pieceName::EMPTY) ++fiftyMoveRule;
+
 	*to = *from;
 	to->moved = true;
 	position.board[m.from_x][m.from_y] = new Piece();
 }
 
-bool Game::isInCheck() const {
+bool Game::isInCheck() {
 	pieceColor c = nextPlayer();
 	for (unsigned i=0; i < 8; ++i) {
 		for (unsigned j=0; j < 8; ++j) {
 			Piece* attacker = getPiece(i, j);
 			if (attacker->color == c) {
+				attacker->legalMoves = getPossibleMoves(i, j);
 				for (const auto &m : attacker->legalMoves) {
 					Piece* attackedSquare = getPiece(m.to_x, m.to_y);
 					if (attackedSquare->name == pieceName::KING && attackedSquare->color != c)
@@ -120,12 +124,20 @@ bool Game::isInCheck() const {
 }
 
 void Game::checkIfEndPosition() {
+	unsigned bishops, knights;
+	unsigned total = 64;
 	bool movesLeft = false;
 	for (int i=0; i < 8; ++i) {
 		for (int j=0; j < 8; ++j) {
 			Piece* p = getPiece(i, j);
+			switch (p->name) {
+				case pieceName::BISHOP: ++bishops; break;
+				case pieceName::KNIGHT: ++knights; break;
+				case pieceName::EMPTY: --total; break;
+				default: break;
+			}
 			if (p->color == currentPlayer() && !p->legalMoves.empty()) {
-				movesLeft = true; break;
+				movesLeft = true;
 			}
 		}
 	}
@@ -138,6 +150,18 @@ void Game::checkIfEndPosition() {
 			}
 		}
 		else state = gameState::DRAW;
+	}
+	else {
+		// threefold repetition
+
+		// fifty move rule
+		if (fiftyMoveRule > 50) state = gameState::DRAW;
+
+		// insuficient material
+		if (total == 2
+				|| (total == 3 && bishops == 1)
+				|| (total == 3 && knights == 1))
+			state = gameState::DRAW;
 	}
 }
 
@@ -152,12 +176,20 @@ void Game::calculateAllPossibleMoves(const pieceColor &player) {
 
 bool Game::preventsCheck(const Move &m) const {
 	Game f = Game(*this);
-	f.move(m);
-	f.turn--;
-	return ( !f.isInCheck() );
+	f.movePieceTo(m);
+	return (!f.isInCheck());
 }
 
 std::vector<Move> Game::getLegalMoves(const unsigned &x, const unsigned &y) const {
+	std::vector<Move> moves = getPossibleMoves(x, y);
+	for (auto m = moves.begin(); m != moves.end(); ) {
+		if (!preventsCheck(*m)) moves.erase(m);
+		else ++m;
+	}
+	return moves;
+}
+
+std::vector<Move> Game::getPossibleMoves(const unsigned &x, const unsigned &y) const {
 	std::vector<Move> legalMoves;
 	Piece* p = getPiece(x, y);
 
@@ -171,16 +203,8 @@ std::vector<Move> Game::getLegalMoves(const unsigned &x, const unsigned &y) cons
 				&& m.from_y >= 0 && m.from_y < 8
 				&& m.to_x >= 0 && m.to_x < 8
 				&& m.to_y >= 0 && m.to_y < 8) {
-			if (position.inCheck) {
-				if (preventsCheck(m)) {
-					legalMoves.push_back(m);
-					return true;
-				}
-			}
-			else {
-				legalMoves.push_back(m);
-				return true;
-			}
+			legalMoves.push_back(m);
+			return true;
 		}
 		return false;
 	};
@@ -230,7 +254,7 @@ std::vector<Move> Game::getLegalMoves(const unsigned &x, const unsigned &y) cons
 
 			/* -- en passant -- */
 			bool isEnPassantSquare;
-			(direction > 0) ? isEnPassantSquare = (x == 3) : isEnPassantSquare = (x == 4);
+			(direction > 0) ? isEnPassantSquare = (x == 4) : isEnPassantSquare = (x == 3);
 			if (isEnPassantSquare) {
 				for (auto leftOrRight : { -1, 1 })
 					if (isOpponent(x, y + leftOrRight)

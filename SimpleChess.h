@@ -60,11 +60,13 @@ class Game {
 		gameState state;
 	private:
 		Board position;
+		unsigned fiftyMoveRule;
 
-		bool isInCheck() const;
+		bool isInCheck();
 		void movePieceTo(Move m);
 		void checkIfEndPosition();
 		void calculateAllPossibleMoves(const pieceColor &player);
 		bool preventsCheck(const Move &m) const;
 		std::vector<Move> getLegalMoves(const unsigned &x, const unsigned &y) const;
+		std::vector<Move> getPossibleMoves(const unsigned &x, const unsigned &y) const;
 };
