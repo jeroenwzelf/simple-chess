@@ -7,11 +7,11 @@ Board::Board() : inCheck(false) {
 		for (unsigned i = 0; i < 8; ++i) {
 			board[pawnrows][i] = new Piece(pieceName::PAWN, color);
 			switch (i) {
-					case 7: case 0: board[piecerows][i] = new Piece(pieceName::ROOK, color); break;
-					case 5: case 1: board[piecerows][i] = new Piece(pieceName::BISHOP, color); break;
-					case 6: case 2: board[piecerows][i] = new Piece(pieceName::KNIGHT, color); break;
-					case 4: board[piecerows][i] = new Piece(pieceName::QUEEN, color); break;
+					case 0: case 7: board[piecerows][i] = new Piece(pieceName::ROOK, color); break;
+					case 2: case 5: board[piecerows][i] = new Piece(pieceName::BISHOP, color); break;
+					case 1: case 6: board[piecerows][i] = new Piece(pieceName::KNIGHT, color); break;
 					case 3: board[piecerows][i] = new Piece(pieceName::KING, color); break;
+					case 4: board[piecerows][i] = new Piece(pieceName::QUEEN, color); break;
 			}
 		}
 		piecerows = 7; pawnrows = 6; color = pieceColor::BLACK;
