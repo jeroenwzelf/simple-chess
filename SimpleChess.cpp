@@ -10,8 +10,8 @@ Board::Board() : inCheck(false) {
 					case 0: case 7: board[piecerows][i] = new Piece(pieceName::ROOK, color); break;
 					case 2: case 5: board[piecerows][i] = new Piece(pieceName::BISHOP, color); break;
 					case 1: case 6: board[piecerows][i] = new Piece(pieceName::KNIGHT, color); break;
-					case 3: board[piecerows][i] = new Piece(pieceName::KING, color); break;
-					case 4: board[piecerows][i] = new Piece(pieceName::QUEEN, color); break;
+					case 3: board[piecerows][i] = new Piece(pieceName::QUEEN, color); break;
+					case 4: board[piecerows][i] = new Piece(pieceName::KING, color); break;
 			}
 		}
 		piecerows = 7; pawnrows = 6; color = pieceColor::BLACK;
@@ -31,12 +31,25 @@ Board::Board(const Board &b) : inCheck(b.inCheck) {
 	}
 }
 
+bool Board::equals(const Game &g) const {
+	for (unsigned i=0; i < 8; ++i) {
+		for (unsigned j=0; j < 8; ++j) {
+			Piece* p = g.getPiece(i, j);
+			if (board[i][j]->name != p->name
+				|| board[i][j]->color != p->color)
+				return false;
+		}
+	}
+	return true;
+}
+
 Game::Game() {
-	state = gameState::PLAYING;
 	turn = 0;
 	fiftyMoveRule = 0;
+	state = gameState::PLAYING;
 	calculateAllPossibleMoves(pieceColor::WHITE);
 	calculateAllPossibleMoves(pieceColor::BLACK);
+	previous = NULL;
 }
 
 Game::Game(const Game &g) {
@@ -44,6 +57,7 @@ Game::Game(const Game &g) {
 	turn = g.turn;
 	fiftyMoveRule = g.fiftyMoveRule;
 	position = Board(g.position);
+	previous = g.previous;
 }
 
 Piece* Game::getPiece(const unsigned &x, const unsigned &y) const {
@@ -68,8 +82,9 @@ void Game::move(const Move &m) {
 	assert(state == gameState::PLAYING);
 	assert(getPiece(m.from_x, m.from_y)->color = player);
 
-	movePieceTo(m);
+	Game* oldposition = new Game(*this);
 
+	movePieceTo(m);
 	if (m.promotePiece != pieceName::EMPTY)
 		getPiece(m.to_x, m.to_y)->name = m.promotePiece;
 	else if (m.castles) {
@@ -92,9 +107,22 @@ void Game::move(const Move &m) {
 	position.inCheck = isInCheck();
 	calculateAllPossibleMoves(currentPlayer());
 	checkIfEndPosition();
+
+	previous = oldposition;
 }
 
-void Game::movePieceTo(Move m) {
+void Game::undo() {
+	if (previous != NULL) {
+		state = previous->state;
+		turn = previous->turn;
+		fiftyMoveRule = previous->fiftyMoveRule;
+		position = Board(previous->position);
+		previous = previous->previous;
+		calculateAllPossibleMoves(currentPlayer());
+	}
+}
+
+void Game::movePieceTo(const Move m) {
 	Piece* from = getPiece(m.from_x, m.from_y);
 	Piece* to = getPiece(m.to_x, m.to_y);
 
@@ -105,7 +133,7 @@ void Game::movePieceTo(Move m) {
 	position.board[m.from_x][m.from_y] = new Piece();
 }
 
-bool Game::isInCheck() {
+bool Game::isInCheck() const {
 	pieceColor c = nextPlayer();
 	for (unsigned i=0; i < 8; ++i) {
 		for (unsigned j=0; j < 8; ++j) {
@@ -136,7 +164,7 @@ void Game::checkIfEndPosition() {
 				case pieceName::EMPTY: --total; break;
 				default: break;
 			}
-			if (p->color == currentPlayer() && !p->legalMoves.empty()) {
+			if (!movesLeft && p->color == currentPlayer() && !p->legalMoves.empty()) {
 				movesLeft = true;
 			}
 		}
@@ -152,20 +180,29 @@ void Game::checkIfEndPosition() {
 		else state = gameState::DRAW;
 	}
 	else {
-		// threefold repetition
-
 		// fifty move rule
 		if (fiftyMoveRule > 50) state = gameState::DRAW;
 
-		// insuficient material
-		if (total == 2
+		// insufficient material
+		else if (total == 2
 				|| (total == 3 && bishops == 1)
 				|| (total == 3 && knights == 1))
 			state = gameState::DRAW;
+
+		// threefold repetition
+		else {
+			unsigned repeats = 0;
+			Game* previous_position = previous;
+			while (previous_position != NULL && repeats < 3) {
+				if (position.equals(*previous_position)) ++repeats;
+				previous_position = previous_position->previous;
+			}
+			if (repeats >= 3) state = gameState::DRAW;
+		}
 	}
 }
 
-void Game::calculateAllPossibleMoves(const pieceColor &player) {
+void Game::calculateAllPossibleMoves(const pieceColor &player) const {
 	for (unsigned i=0; i < 8; ++i) {
 		for (unsigned j=0; j < 8; ++j) {
 			Piece* p = getPiece(i, j);
@@ -193,13 +230,13 @@ std::vector<Move> Game::getPossibleMoves(const unsigned &x, const unsigned &y) c
 	std::vector<Move> legalMoves;
 	Piece* p = getPiece(x, y);
 
-	/* -- adds move, makes sure the move is legal in general -- */
-	auto addMove = [&] (Move m) -> bool {
+	// adds move to legalMoves, but checks if the move is legal for a general piece
+	auto addMove = [&] (const Move &m) -> bool {
 		Piece* from = getPiece(m.from_x, m.from_y);
 		Piece* to = getPiece(m.to_x, m.to_y);
-		if (from != NULL && to != NULL
-				&& from->color != to->color
-				&& m.from_x >= 0 && m.from_x < 8
+		if (from != NULL && to != NULL				// Piece and destination must be a piece on the board.
+				&& from->color != to->color 		// Not taking a piece with thesame color.
+				&& m.from_x >= 0 && m.from_x < 8	// Checking out of bounds.
 				&& m.from_y >= 0 && m.from_y < 8
 				&& m.to_x >= 0 && m.to_x < 8
 				&& m.to_y >= 0 && m.to_y < 8) {
@@ -209,7 +246,7 @@ std::vector<Move> Game::getPossibleMoves(const unsigned &x, const unsigned &y) c
 		return false;
 	};
 
-	auto isOpponent = [&] (unsigned dx, unsigned dy) -> bool {
+	auto isOpponent = [&] (const unsigned &dx, const unsigned &dy) -> bool {
 		Piece* opponent = getPiece(dx, dy);
 		if (opponent == NULL) return false;
 		return (opponent->name != pieceName::EMPTY
@@ -331,6 +368,7 @@ void print(const Game &g) {
 	std::cout << std::endl;
 }
 
+// random function with a uniform distribution
 int random(int a, int b) {
 	std::random_device rd;
 	std::mt19937 gen(rd());
@@ -344,17 +382,28 @@ void waitForInput() {
 	for (int i=0; i < 10; ++i) std::cout << "\e[A";
 }
 
+void randomMove(Game &g) {
+	// get all pieces that are allowed to move
+	std::vector<Piece*> moveable_pieces;
+	pieceColor player = g.currentPlayer();
+	for (unsigned i=0; i < 8; ++i) {
+		for (unsigned j=0; j < 8; ++j) {
+			Piece* p = g.getPiece(i, j);
+			if (p->color == player && !p->legalMoves.empty())
+				moveable_pieces.push_back(p);
+		}
+	}
+	// pick one and make a random legal move with it
+	Piece* p = moveable_pieces.at( random(0, moveable_pieces.size()-1) );
+	g.move(p->legalMoves.at( random(0, p->legalMoves.size()-1) ));
+}
+
 int main() {
 	Game g;
 	while (g.state == gameState::PLAYING) {
 		print(g);
 		waitForInput();
-
-		/* -- do random move -- */
-		Piece* p;
-		do { p = g.getPiece(random(0, 7), random(0, 7));
-		} while (p == NULL || p->color != g.currentPlayer() || p->legalMoves.empty());
-		g.move(p->legalMoves.at( random(0, p->legalMoves.size()-1) ));
+		randomMove(g);
 	}
 	/* -- game ended -- */
 	print(g);

@@ -7,6 +7,8 @@
 #include <array>
 #include <limits>
 
+
+class Game;
 enum class gameState { PLAYING, WON_WHITE, WON_BLACK, DRAW };
 enum class pieceName { EMPTY, PAWN, ROOK, BISHOP, KNIGHT, KING, QUEEN };
 enum class pieceColor { EMPTY, WHITE, BLACK };
@@ -43,13 +45,14 @@ struct Piece {
 struct Board {
 	Board();
 	Board(const Board &b);
+	bool equals(const Game &g) const;
 	Piece* board[8][8];
 	bool inCheck;
 };
 
 class Game {
 	public:
-		Game();	// initialize chess board and such
+		Game();
 		Game(const Game &g);
 		void move(const Move &m);
 		Piece* getPiece(const unsigned &x, const unsigned &y) const;
@@ -58,14 +61,16 @@ class Game {
 		pieceColor nextPlayer() const;
 		unsigned turn;
 		gameState state;
+		Game* previous;
+		void undo();
 	private:
 		Board position;
 		unsigned fiftyMoveRule;
 
-		bool isInCheck();
-		void movePieceTo(Move m);
+		bool isInCheck() const;
+		void movePieceTo(const Move m);
 		void checkIfEndPosition();
-		void calculateAllPossibleMoves(const pieceColor &player);
+		void calculateAllPossibleMoves(const pieceColor &player) const;
 		bool preventsCheck(const Move &m) const;
 		std::vector<Move> getLegalMoves(const unsigned &x, const unsigned &y) const;
 		std::vector<Move> getPossibleMoves(const unsigned &x, const unsigned &y) const;
