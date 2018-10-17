@@ -45,36 +45,30 @@ bool Board::equals(const Game &g) const {
 
 Game::Game() {
 	turn = 0;
+	previous = NULL;
 	fiftyMoveRule = 0;
 	state = gameState::PLAYING;
 	calculateAllPossibleMoves(pieceColor::WHITE);
-	calculateAllPossibleMoves(pieceColor::BLACK);
-	previous = NULL;
 }
 
 Game::Game(const Game &g) {
-	state = g.state;
 	turn = g.turn;
-	fiftyMoveRule = g.fiftyMoveRule;
-	position = Board(g.position);
 	previous = g.previous;
+	fiftyMoveRule = g.fiftyMoveRule;
+	state = g.state;
+	position = Board(g.position);
 }
 
 Piece* Game::getPiece(const unsigned &x, const unsigned &y) const {
-	if (x < 0 || x > 7 || y < 0 || y > 7) return NULL;
-	return position.board[x][y];
+	return (x < 0 || x > 7 || y < 0 || y > 7) ? NULL : position.board[x][y];
 }
 
 pieceColor Game::currentPlayer() const {
-	pieceColor c;
-	(turn % 2 == 0) ? c = pieceColor::WHITE : c = pieceColor::BLACK;
-	return c;
+	return (turn % 2 == 0) ? pieceColor::WHITE : pieceColor::BLACK;
 }
 
 pieceColor Game::nextPlayer() const {
-	pieceColor c;
-	(turn % 2 == 0) ? c = pieceColor::BLACK : c = pieceColor::WHITE;
-	return c;
+	return (turn % 2 == 0) ? pieceColor::BLACK : pieceColor::WHITE;
 }
 
 void Game::move(const Move &m) {
@@ -330,15 +324,14 @@ std::vector<Move> Game::getPossibleMoves(const unsigned &x, const unsigned &y) c
 			}
 			if (!p->moved) {
 				/* -- queenside castling -- */
-				Piece* rook;
-				(p->color == pieceColor::WHITE) ? rook = getPiece(7, 7) : rook = getPiece(0, 7);
+				Piece* rook = (p->color == pieceColor::WHITE) ? getPiece(7, 7) : getPiece(0, 7);
 				if (!rook->moved
 						&& getPiece(x, 4)->name == pieceName::EMPTY
 						&& getPiece(x, 5)->name == pieceName::EMPTY
 						&& getPiece(x, 6)->name == pieceName::EMPTY)
 					addMove(Move(x, y, 5, y, true));
 				/* -- kingside castling -- */
-				(p->color == pieceColor::WHITE) ? rook = getPiece(7, 0) : rook = getPiece(0, 0);
+				rook = (p->color == pieceColor::WHITE) ? getPiece(7, 0) : getPiece(0, 0);
 				if (!rook->moved
 						&& getPiece(x, 2)->name == pieceName::EMPTY
 						&& getPiece(x, 1)->name == pieceName::EMPTY)
@@ -348,71 +341,4 @@ std::vector<Move> Game::getPossibleMoves(const unsigned &x, const unsigned &y) c
 		default: break;
 	}
 	return legalMoves;
-}
-
-/* --------------------------------------
- * -- PART BELOW IS USED AS AN EXAMPLE --
- * --------------------------------------
-*/
-
-
-void print(const Game &g) {
-	std::cout << '\r' << "------------------------------------------------ MOVE " << g.turn << " -------------"<< std::endl;
-	for (unsigned i=0; i < 8; ++i) {
-		for (unsigned j=0; j < 8; ++j) {
-			g.getPiece(i, j)->print();
-			std::cout << ' ';
-		}
-		std::cout << std::endl;
-	}
-	std::cout << std::endl;
-}
-
-// random function with a uniform distribution
-int random(int a, int b) {
-	std::random_device rd;
-	std::mt19937 gen(rd());
-	std::uniform_int_distribution<> dis(a, b);
-	return dis(gen);
-}
-
-void waitForInput() {
-	std::cout << "Press enter to continue..." << "\e[A";
-	std::cin.ignore();
-	for (int i=0; i < 10; ++i) std::cout << "\e[A";
-}
-
-void randomMove(Game &g) {
-	// get all pieces that are allowed to move
-	std::vector<Piece*> moveable_pieces;
-	pieceColor player = g.currentPlayer();
-	for (unsigned i=0; i < 8; ++i) {
-		for (unsigned j=0; j < 8; ++j) {
-			Piece* p = g.getPiece(i, j);
-			if (p->color == player && !p->legalMoves.empty())
-				moveable_pieces.push_back(p);
-		}
-	}
-	// pick one and make a random legal move with it
-	Piece* p = moveable_pieces.at( random(0, moveable_pieces.size()-1) );
-	g.move(p->legalMoves.at( random(0, p->legalMoves.size()-1) ));
-}
-
-int main() {
-	Game g;
-	while (g.state == gameState::PLAYING) {
-		print(g);
-		waitForInput();
-		randomMove(g);
-	}
-	/* -- game ended -- */
-	print(g);
-	switch(g.state) {
-		case gameState::DRAW: std::cout << "Game is a draw!"; break;
-		case gameState::WON_WHITE: std::cout << "White won!"; break;
-		case gameState::WON_BLACK: std::cout << "Black won!"; break;
-		default: break;
-	}
-	std::cin.ignore();
-	return 0;
 }

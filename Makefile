@@ -1,9 +1,9 @@
 CC=g++
 CFLAGS=-Wall -g -ggdb
-SOURCES=SimpleChess.cpp
+SOURCES=example.cpp SimpleChess.cpp
 OBJECTS=$(SOURCES:.cpp=.o)
 
-main: SimpleChess.cpp
+main: example.cpp
 	$(CC) $(CFLAGS) -c $(SOURCES)
 	$(CC) $(OBJECTS) $(CFLAGS) -o chess
 	rm -rf *.o
